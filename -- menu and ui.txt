@@ -1,0 +1,255 @@
+-- menu and ui
+
+-- print a body of text wrapped around
+function print_wrapped(text, x, y, color)
+
+  col_width = 112 -- how long each column should be.
+  line_arr = split(text," ")
+  cursor(x, y, 7)
+  line = ""
+ 
+  for word in all(line_arr) do
+    word_str = tostring(word) -- case to string or it fails on numbers
+    prospect_length = (#line + #word_str + 1) * 4
+    if (prospect_length >= col_width) do
+      print(line, x, y, color)
+      line = word_str
+      y += 8
+    else
+      if (#line == 0) do
+        line = word_str
+      else
+        line = line.." "..word_str
+      end
+    end
+  end
+  print(line, x, y, color)
+
+end
+
+-- return true/false each n_frames 
+function toggle_per_n_frames(n_frames)
+ mod_count = f_count % (n_frames * 2)
+ return mod_count < n_frames
+end
+
+-- main 'action' menu
+function new_menu(items, n_columns, back_action, show_desc)
+
+  -- model the menu
+  local menu = {
+    items = items,
+    n_columns = n_columns,
+    back_action = back_action,
+    show_desc = show_desc,
+
+    -- menu positioning
+    selected_index = 1,
+    x_origin = 8,
+    x_gap = 42,
+    y_origin = narrator_box_y + 8,
+    y_gap = 12,
+  }
+
+  -- update the menu with arrow keys
+  menu.update = function(this)
+
+    -- translate selected index into x and y.
+    local translated_xy = this:translate_xy(this.selected_index)
+    local pos_x = translated_xy["x"]
+    local pos_y = translated_xy["y"]
+
+    -- move the cursor and cap its positions.
+    if btnp(0) then pos_x = max(0, pos_x - 1) end
+    if btnp(1) then pos_x = min(this.n_columns - 1, pos_x + 1) end
+    if btnp(2) then pos_y = max(0, pos_y - 1) end
+    if btnp(3) then pos_y = min(flr(#this.items / this.n_columns) - 1, pos_y + 1) end
+
+
+    -- translate x and y back into selected index.
+    this.selected_index = this.n_columns * pos_y + pos_x + 1
+
+    -- execute the selected event
+    if btnp(5) then 
+      local selected_event_id = this.items[this.selected_index]
+      local selected_event = generate_event(selected_event_id, state.player, state.enemy)
+      sequence:insert(selected_event)
+      sfx(0)
+    end
+
+    -- execute the back function
+    if btnp(4) and this.back_action then
+      sequence:insert(new_event("menu"))
+      sequence:next()
+      sfx(2)
+    end
+  end
+
+  -- render the current menu
+  menu.draw = function(this)
+
+    this:draw_desc()
+    draw_narrator_box()
+
+    for i=1, #this.items do
+      local pos_x = this:translate_xy(i)["x"] * this.x_gap + this.x_origin
+      local pos_y = this:translate_xy(i)["y"] * this.y_gap + this.y_origin
+      
+      -- print the selected menu item
+      if (this.selected_index == i) then prefix = "▶ " else prefix = "  " end
+      print(prefix..this.items[i], pos_x, pos_y, 7)
+    end
+  end
+
+  -- draw a sub-menu with description of the item.
+  menu.draw_desc = function(this)
+    if not this.show_desc then return end
+
+    local gap = 1
+    local height = 12
+    local box_y = narrator_box_y-gap-height
+    rectfill(0, box_y, 128, narrator_box_y-gap, 0)
+
+    local text_gap = 4
+    local desc = get_event_desc(this.items[this.selected_index])
+    local origin_x = text_gap
+    local origin_y = box_y + text_gap
+    print_wrapped(desc, origin_x, origin_y, 7)
+  end
+
+  menu.translate_xy = function(this, i)
+    local x_index = (i - 1) % this.n_columns
+    local y_index = ceil(i / this.n_columns) - 1
+    return {x = x_index, y = y_index}
+  end
+
+  return menu
+end
+
+-- print something in the center of the screen.
+function print_x_centered(text, y, color)
+  local x = (128 - #text * 4) / 2
+  print(text, x, y, color)
+end
+
+
+
+function draw_narrator_box()
+ -- create a background for the narrator's box.
+ rectfill(0, narrator_box_y, 128, 128, 0)
+ local border_pad = 1
+ rect(border_pad, narrator_box_y + border_pad, 127 - border_pad, 127 - border_pad, 7)
+end
+
+function draw_hp_bar(unit, x, y, width)
+  local height = 1
+
+  -- draw bar base
+  rectfill(x, y, x + width, y + height, 0)
+
+  -- draw hp bar
+  if unit.hp > 0 then
+    local life_percent = unit.hp / unit.max_hp
+    local life_width = ceil(width * life_percent)
+    local life_color = 11
+
+    if life_percent < 0.5 then life_color = 9 end
+    if life_percent < 0.2 then life_color = 8 end
+
+    rectfill(x, y, x + life_width, y + height, life_color)
+  end
+end
+
+function draw_status_box(unit, spr_x, is_inverted)
+  local box_pad = 4
+  local side_pad = 2
+  local status_box_width = 72
+  local status_box_height = 24
+  local pos_x = 128 - status_box_width - side_pad
+  local pos_y = narrator_box_y - status_box_height - side_pad - 1
+
+  if is_inverted then
+    pos_x = side_pad
+    pos_y = side_pad
+  end
+
+  local text_color = 7
+  local x_cursor = pos_x + box_pad
+  local y_cursor = pos_y + box_pad
+
+  -- unit name
+  print(unit.name, x_cursor, y_cursor, text_color)
+
+  -- unit health
+  local hp_str = ""..unit.hp.." hp"
+  local hp_x = pos_x + status_box_width - box_pad - (#hp_str * 4) + 1
+  print(hp_str, hp_x, y_cursor, text_color)
+
+  -- unit health bar
+  y_cursor += 8
+  draw_hp_bar(unit, x_cursor, y_cursor, status_box_width - box_pad * 2)
+
+  -- unit mana
+  y_cursor += 4
+  local mana_str = unit.mana.." mana"
+  local mana_x = pos_x + status_box_width - box_pad - (#mana_str * 4) + 1
+  print(mana_str, mana_x, y_cursor, 12)
+
+end
+
+function draw_unit(unit, is_inverted)
+
+  -- is_inverted - draw it at the top or bottom?
+
+  local spr_blocks = 5
+  local spr_size = spr_blocks * 8
+
+  -- prepare the colors
+  palt(0, false)
+  palt(12, true)
+  is_visible = true
+  
+  if is_inverted then
+    spr_x = 128 - spr_size
+    spr_y = 0
+    status_x = spr_x
+  else
+    spr_x = 0
+    spr_y = narrator_box_y - spr_size
+    status_x = spr_size
+  end
+
+  anim_spr_x = spr_x
+  anim_spr_y = spr_y
+
+  -- apply unit animation
+  if unit.animation then
+    unit.animation:update(spr_x, spr_y)
+    is_visible = unit.animation.is_visible
+    pal(0, unit.animation.color)
+    anim_spr_x = spr_x + unit.animation.x
+    anim_spr_y = spr_y + unit.animation.y
+    if unit.animation:has_ended() then unit.animation = nil end
+  end
+
+  -- draw the unit and reset the palettes
+  local spr_id = 1
+  if unit.name == "werewolf" then spr_id = 132 end
+  if is_visible then spr(spr_id, anim_spr_x, anim_spr_y, spr_blocks, spr_blocks) end -- draw player sprite
+  pal() -- reset palette
+
+  -- draw the vfx on top of the unit
+  if unit.vfx_animation then
+    unit.vfx_animation:update(spr_x, spr_y)
+    if unit.vfx_animation:has_ended() then unit.vfx_animation = nil end
+  end
+  pal()
+
+  -- draw hp mana and name
+  draw_status_box(unit, status_x, is_inverted)
+end
+
+function draw_units()
+  draw_unit(state.player, false)
+  draw_unit(state.enemy, true)
+end

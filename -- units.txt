@@ -1,0 +1,73 @@
+-- units
+
+function make_player(hp, event_pool, items)
+  local unit = {
+
+    -- basic info
+    hp=hp,
+    max_hp=hp,
+    mana=5,
+    max_mana=5,
+    items=items,
+
+    
+
+    -- event management
+    event_pool=event_pool,
+    event_queue={},
+
+    
+  -- copy the event pool into the event queue
+  unit.enqueue_random_events_from_pool = function(this)
+    this.event_queue = {}
+    for i=1, #this.event_pool do
+      local r_index = flr(rnd(#this.event_queue)) + 1
+      add(this.event_queue, this.event_pool[i], r_index)
+    end
+  end
+
+  -- next event in the queue
+  unit.next_event = function(this)
+    -- if empty, repopulate the queue.
+    if #this.event_queue == 0 then this:enqueue_random_events_from_pool() end
+    -- pop first item from the queue.
+    local event = this.event_queue[1]
+    del(this.event_queue, event)
+    return event
+  end
+
+
+  -- insert new event into unit's sequence.
+  unit.insert_event = function(this, event)
+    add(this.event_queue, event, 1)
+  end
+
+  unit.on_turn_start = function(this)
+
+    if this.vulnerable then
+      sequence:add(new_info_event(unit.name.." is no longer vulnerable."))
+    end
+
+    if this.bleed == 1 then
+      sequence:add(new_info_event(unit.name.." is no longer bleeding."))
+    end
+
+    if this.blind == 1 then
+      sequence:add(new_info_event(unit.name.." is no longer blinded."))
+    end
+
+    -- reset unit status effects.
+    this.vulnerable = false
+    this.block = 0
+    this.bleed -= 1
+    this.blind -= 1
+
+  end
+
+  -- attach new animation to this unit.
+  unit.animate = function(this, animation)
+    this.animation = animation
+  end
+
+  return unit
+end

@@ -1,0 +1,58 @@
+-- event system
+
+-- an event node (a game action)
+-- e.g. damage, text, healing, etc.
+function new_event(type, desc, executable)
+
+  local event = {
+    type = type,
+    desc = desc,
+    next = nil, -- the next node.
+    executable = executable -- does this event execute code?
+  }
+
+  -- in a linked list, get the tail node attached to this.
+  event.get_tail = function(this)
+    if this.next then
+      return this.next:get_tail()
+    else
+      return this
+    end
+  end
+
+  -- add new event to the end of the chain
+  event.chain_add = function(this, event)
+    this:get_tail().next = event
+  end
+
+  return event
+end
+
+-- a linked-list of events to control game flow.
+function new_sequence()
+
+  local first_event = new_info_event("it's your turn to move!")
+  local sequence = {
+    head = first_event,
+    tail = first_event
+  }
+
+  -- move sequence cursor to the next event.
+  sequence.next = function(this)
+    this.head = this.head.next
+  end
+
+  -- add an event to the end of the sequence.
+  sequence.add = function(this, e)
+    this.tail.next = e
+    this.tail = e
+  end
+
+  -- move sequence cursor to the next event.
+  sequence.insert = function(this, e)
+    e:get_tail().next = this.head.next
+    this.head.next = e
+  end
+
+  return sequence
+end

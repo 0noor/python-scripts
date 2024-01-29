@@ -1,0 +1,365 @@
+-- rpg dialogue scripting demo
+-- by geckojsc
+
+-- this demo showcases
+-- using coroutines to:
+-- - reveal text frame by frame
+-- - wait until player presses [x]
+-- - give the player a choice of answers [up/down + x] to select
+-- - wait until npc has finished walking
+-- - do several of the above simultaneously, and only
+--   continue once all of them are finished.
+
+timer = 0  -- mostly used for animation
+npcs = {}    -- people the player can talk to
+sensors = {} -- invisible tiles that initiate scripts scripts
+
+-- some global flags, could be
+-- replaced by an 'inventory'
+has_gear = false
+
+function create_actor(x,y,anim)
+	return {
+		x = x, -- map pos (tiles)
+		y = y,
+		px = x*8, -- world pos (pixels)
+		py = y*8-3,
+		anim = anim,
+		frame = 1
+	}
+end
+
+anim_hero = {1,2,1,3}
+anim_npc = {4,5,4,5}
+
+hero = create_actor(2,13,anim_hero)
+npcs[1] = create_actor(7,7,anim_npc)
+npcs[2] = create_actor(3,1,anim_npc)
+
+sensors[1] = {x=7, y=8}
+
+-- scripting variables
+-------------------------------
+text = nil
+text_color = 7
+responses = nil
+ans = 1
+routine = nil
+script_active = false
+
+-- initiate a script
+function script_run(func)
+	routine = cocreate(function()
+		script_active = true
+		func()
+		script_active = false
+	end)
+	coresume(routine)
+end
+
+-- this is called every frame
+-- and player input is ignored,
+-- as long as there is a script
+-- active.
+function script_update()
+	coresume(routine)
+end
+
+
+-- script commands
+-------------------------------
+
+function reveal_text(str)
+	text = ""
+	for i=1, #str do
+		text = text..sub(str,i,i)
+		yield()
+	end
+end
+
+function say(str)
+	reveal_text(str)
+	repeat
+	 -- every time we call yield()
+	 -- we're saying "that's all
+	 -- for now, come back here
+	 -- next frame"
+		yield()
+	until btnp(5)
+	text = nil
+end
+
+function announce(str)
+	text = str
+	text_color = 12
+	repeat
+		yield()
+	until btnp(5)
+	text = nil
+	text_color = 7
+end
+
+function ask(str, ...)
+	reveal_text(str)
+	responses = {...}
+	ans = 1
+	repeat
+		yield()
+		if btnp(2) and ans > 1 then
+			ans -= 1
+		elseif btnp(3) and ans < #responses then
+			ans += 1
+		end
+	until btnp(5)
+	text = nil
+	responses = nil
+end
+
+function moveto(npc,x,y)
+	npc.x = x
+	npc.y = y
+	-- wait until npc reaches destination
+	repeat
+		yield()
+	until actor_at_dest(npc)
+end
+
+function moveby(npc,dx,dy)
+	moveto(npc, npc.x+dx, npc.y+dy)
+end
+
+-- execute multiple script
+--  functions at once.
+-- the main script resumes once
+--  all functions are complete
+function simultaneously(...)
+	local routines = {}
+	for f in all{...} do
+		add(routines, cocreate(f))
+	end
+	repeat
+		yield()
+		local complete = true
+		for c in all(routines) do
+			if coresume(c) then
+			 complete = false
+			end
+		end
+	until complete
+end
+
+-- triggered when the player
+-- speaks to the guard
+npcs[1].script = function ()
+	say [[
+whew, desert patrol is hard
+work!]]
+end
+
+-- triggered when the player
+-- speaks to the archeologist
+npcs[2].script = function ()
+	if has_gear then
+		say [[
+i used to be an archeologist,
+but since i retired i have no
+need for any of my old gear.]]
+	else
+		say [[hey there!]]
+		ask([[
+are you looking to explore the
+desert, by any chance?]],
+			"yes","no")
+		if ans==1 then
+			say [[ah excellent! here, take this!]]
+			has_gear = true
+			announce [[received: archeology gear]]
+		else
+			say [[oh okay, nevermind...]]
+		end
+	end
+end
+
+-- triggered when the player
+-- tries to walk past the guard
+sensors[1].script = function ()
+	if has_gear then
+		return -- allow hero to pass
+	end
+	
+	-- walk in front of hero
+	moveby(npcs[1], 1, 0)
+	moveby(npcs[1], 0, 1)
+	say [[
+sorry, i can't let you go into
+the desert without the proper
+equipment!]]
+
+ -- push hero back
+	simultaneously(
+		function()
+			moveby(npcs[1], -1, 0)
+		end,
+		function()
+		 moveby(hero, -1, 0)
+		end)
+		
+	-- return to original position
+	moveby(npcs[1], 0, -1)
+end
+
+function get_npc_at(x,y)
+	for t in all(npcs) do
+		if t.x == x and t.y == y then
+			return t
+		end
+	end
+end
+
+function tile_solid(x, y)
+	return get_npc_at(x,y)
+	    or fget(mget(x,y), 0)
+end
+
+
+-- return the target values for
+-- px and py
+function actor_get_dest(t)
+	return t.x*8, t.y*8-3
+end
+
+function actor_animate(t)
+	if timer % 6 == 0 then
+		t.frame += 1
+		if t.frame > #t.anim then
+			t.frame = 1
+		end
+	end
+end
+
+-- true if actor reached destination
+-- false if actor is walking there
+function actor_at_dest(t)
+	local x,y = actor_get_dest(t)
+	return t.px == x and t.py == y
+end
+
+-- move actor towards destination
+function actor_update(t)
+	local x,y = actor_get_dest(t)
+	if     t.px < x then t.px += 0.5
+	elseif t.px > x then t.px -= 0.5
+	elseif t.py < y then t.py += 0.5
+	elseif t.py > y then t.py -= 0.5
+	else
+		t.frame = 1
+		return
+	end
+	actor_animate(t)
+end
+
+function hero_in_range(x,y)
+	local hx,hy = hero.x,hero.y
+	return (x-1 == hx and y == hy)
+	    or (x+1 == hx and y == hy)
+	    or (x == hx and y-1 == hy)
+	    or (x == hx and y+1 == hy)
+end
+
+-- attempt to run a script
+-- if hero is near npc
+function check_npc(npc)
+	if hero_in_range(npc.x,npc.y) then
+		if npc.script then
+			script_run(npc.script)
+		end
+	end
+end
+
+function check_sensor(sens)
+	if hero.x == sens.x
+	and hero.y == sens.y then
+		script_run(sens.script)
+	end
+end
+
+function hero_update(t)
+	local was_at_dest = actor_at_dest(t)
+	actor_update(t)
+	
+	if script_active then
+		-- player can't move if there
+		-- is any running script
+		return
+	end
+	
+	local dx, dy = 0, 0
+	if actor_at_dest(t) then
+		
+		if not was_at_dest then
+			foreach(sensors, check_sensor)
+			if script_active then
+				return
+			end
+		end
+		
+		if btn(0) then
+			dx -= 1
+			t.flip_x = true
+		elseif btn(1) then
+			dx += 1
+			t.flip_x = false
+		elseif btn(2) then
+			dy -= 1
+		elseif btn(3) then
+			dy += 1
+		elseif btnp(5) then
+			foreach(npcs, check_npc)
+		end
+		if not tile_solid(t.x+dx, t.y+dy) then
+			t.x += dx
+			t.y += dy
+		end
+	end
+end
+
+function _update60()
+	timer += 1
+	hero_update(hero)
+	foreach(npcs, actor_update)
+	if script_active then
+		script_update()
+	end
+end
+
+function actor_draw(t)
+	spr(t.anim[t.frame],
+	    t.px, t.py, 1, 1,
+	    t.flip_x)
+end
+
+function _draw()
+	cls()
+	map(0,0, 0,0, 32, 32)
+	foreach(npcs, actor_draw)
+	actor_draw(hero)
+	
+	if text then
+		rectfill(2,107,125,125,0)
+		print(text, 3,108, text_color)
+	end
+	if responses then
+		local top = 101 - 6 * #responses
+		rectfill(70, top,
+		         125, 105, 0)
+		for i=1, #responses do
+			print(responses[i],
+			      72, top + i*6-4,
+			      i==ans and 7 or 5)
+		end
+	end
+end
+
+-- workaround for 30fps platforms
+-- until pico-8 0.9.1 comes out
+function _update() _update60() _update_buttons() _update60() end

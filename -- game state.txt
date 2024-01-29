@@ -1,0 +1,116 @@
+-- game state
+-- create the two units and 
+-- provide helper functions to switch turns.
+
+function new_game_state()
+
+  -- create player unit
+  local player_events = {"menu"}
+  local player_items = {"crossbow", "elixir", "silver knife"}
+  local player_hp = 100
+  local player = new_unit("player", player_hp, player_events, player_items)
+
+  -- create enemy unit
+  local enemy_events = {"slash", "dark charge", "strong defend", "raging strike", "ravage", "cleave"}
+  local enemy_hp = 400
+  local enemy = new_unit("werewolf", enemy_hp, enemy_events)
+
+  -- game state
+  local state = {
+    player = player,
+    enemy = enemy,
+    is_player_turn = true
+  }
+
+  -- which unit moves this turn?
+  state.current_unit = function(this)
+    if this.is_player_turn then
+      return this.player
+    else
+      return this.enemy
+    end
+  end
+
+  -- which is the current target?
+  state.current_target = function(this)
+    if this.is_player_turn then
+      return this.enemy
+    else
+      return this.player
+    end
+  end
+
+  -- start a new turn
+  state.start_turn = function(this, is_player_turn)
+    this.is_player_turn = is_player_turn
+    this:current_unit():on_turn_start()
+    unit_event = generate_event(this:current_unit():next_event(), this:current_unit(), this:current_target())
+    sequence:add(unit_event)
+    sequence:add(new_end_turn_event())
+  end
+
+  -- switch turn to the other player
+  state.switch_turn = function(this)
+    this:start_turn(not this.is_player_turn)
+  end
+
+  return state
+end
+-- game state
+-- create the two units and 
+-- provide helper functions to switch turns.
+
+function new_game_state()
+
+  -- create player unit
+  local player_events = {"menu"}
+  local player_items = {"crossbow", "elixir", "silver knife"}
+  local player_hp = 100
+  local player = new_unit("player", player_hp, player_events, player_items)
+
+  -- create enemy unit
+  local enemy_events = {"slash", "dark charge", "strong defend", "raging strike", "ravage", "cleave"}
+  local enemy_hp = 400
+  local enemy = new_unit("werewolf", enemy_hp, enemy_events)
+
+  -- game state
+  local state = {
+    player = player,
+    enemy = enemy,
+    is_player_turn = true
+  }
+
+  -- which unit moves this turn?
+  state.current_unit = function(this)
+    if this.is_player_turn then
+      return this.player
+    else
+      return this.enemy
+    end
+  end
+
+  -- which is the current target?
+  state.current_target = function(this)
+    if this.is_player_turn then
+      return this.enemy
+    else
+      return this.player
+    end
+  end
+
+  -- start a new turn
+  state.start_turn = function(this, is_player_turn)
+    this.is_player_turn = is_player_turn
+    this:current_unit():on_turn_start()
+    unit_event = generate_event(this:current_unit():next_event(), this:current_unit(), this:current_target())
+    sequence:add(unit_event)
+    sequence:add(new_end_turn_event())
+  end
+
+  -- switch turn to the other player
+  state.switch_turn = function(this)
+    this:start_turn(not this.is_player_turn)
+  end
+
+  return state
+end
